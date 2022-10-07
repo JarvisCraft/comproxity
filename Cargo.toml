@@ -1,0 +1,12 @@
+[package]
+name = "comproxity"
+version = "0.1.0"
+edition = "2021"
+description = "Simple Proof of Work (PoW) HTTP proxy"
+homepage = "https://progrm-jarvis.ru/comproxity"
+repository = "https://github.com/JarvisCraft/comproxity/"
+license = "MIT OR Apache-2.0"
+keywords = ["http", "proxy", "proof-of-work"]
+categories = ["network-programming", "web-programming::http-server"]
+
+[dependencies]
