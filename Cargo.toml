@@ -10,3 +10,11 @@ keywords = ["http", "proxy", "proof-of-work"]
 categories = ["network-programming", "web-programming::http-server"]
 
 [dependencies]
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
+ulid = "1.0.0"
+tokio = { version = "1.21.2", features = ["full"] }
+hyper = { version = "0.14.20", features = ["full"]}
+hyper-reverse-proxy = "0.5.1"
+config = "0.13.2"
+serde = { version = "1.0.145", features = ["derive"] }
