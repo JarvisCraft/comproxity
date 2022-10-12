@@ -14,7 +14,7 @@ pub(crate) async fn handle_request(
     handle_unique_request(forward_uri, client_address, request, Ulid::new()).await
 }
 
-#[tracing::instrument(target = "proxy", name = "request", skip(forward_uri, request))]
+#[tracing::instrument(name = "request", skip(forward_uri, request))]
 async fn handle_unique_request(
     forward_uri: &str,
     client_address: SocketAddr,

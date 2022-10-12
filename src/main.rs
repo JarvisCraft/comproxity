@@ -3,7 +3,6 @@ mod proxy;
 use config::Config;
 use hyper::server::conn::AddrStream;
 use serde::Deserialize;
-use std::error::Error;
 use std::{convert::Infallible, net::SocketAddr};
 
 /// Configuration of Comproxity.
@@ -22,14 +21,22 @@ fn default_address() -> SocketAddr {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+#[tracing::instrument(name = "bootstrap")]
+async fn main() {
     tracing_subscriber::fmt::init();
 
-    let config: ComproxityConfig = Config::builder()
+    let config: ComproxityConfig = match Config::builder()
         .add_source(config::File::with_name("config"))
         .add_source(config::Environment::with_prefix("COMPROXITY"))
-        .build()?
-        .try_deserialize()?;
+        .build()
+        .and_then(Config::try_deserialize)
+    {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::error!("Failed to parse config: {error}");
+            return;
+        }
+    };
 
     // TODO: find a more elegant solution to share endpoint
     let endpoint: &'static str = Box::leak(config.endpoint.clone().into_boxed_str());
@@ -54,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::info!("Starting");
 
-    server.await?;
-
-    Ok(())
+    if let Err(error) = server.await {
+        tracing::error!("Server failed: {error}");
+    }
 }
