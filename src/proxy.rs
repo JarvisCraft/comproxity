@@ -1,29 +1,28 @@
 //! Implementation of the reverse proxy.
 
-use {
-    hyper::{Body, Request, Response, StatusCode},
-    std::{convert::Infallible, net::SocketAddr},
-    ulid::Ulid,
-};
+use crate::Config;
+use hyper::{Body, Request, Response, StatusCode};
+use std::{convert::Infallible, net::SocketAddr};
+use ulid::Ulid;
 
 pub(crate) async fn handle_request(
-    forward_uri: &str,
+    config: Config,
     client_address: SocketAddr,
     request: Request<Body>,
 ) -> Result<Response<Body>, Infallible> {
-    handle_unique_request(forward_uri, client_address, request, Ulid::new()).await
+    handle_unique_request(config, client_address, request, Ulid::new()).await
 }
 
-#[tracing::instrument(name = "request", skip(forward_uri, request))]
+#[tracing::instrument(name = "request", skip(config, request))]
 async fn handle_unique_request(
-    forward_uri: &str,
+    config: Config,
     client_address: SocketAddr,
     request: Request<Body>,
     id: Ulid,
 ) -> Result<Response<Body>, Infallible> {
     tracing::info!("Handling {request:?}");
 
-    match hyper_reverse_proxy::call(client_address.ip(), forward_uri, request).await {
+    match hyper_reverse_proxy::call(client_address.ip(), &config.endpoint, request).await {
         Ok(response) => {
             tracing::debug!("Responding with {response:?}");
             Ok(response)
