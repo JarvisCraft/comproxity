@@ -1,38 +1,71 @@
 use configuration::{Config as Configuration, ConfigError};
 use serde::Deserialize;
-use std::{net::SocketAddr, ops::Deref, sync::Arc};
+use serde_with::serde_as;
+use std::{net::SocketAddr, num::NonZeroU8, ops::Deref, sync::Arc};
+use time::Duration;
+
+use crate::puzzle::Verifier;
 
 /// Configuration of Comproxity.
 #[derive(Deserialize)]
-pub(crate) struct ConfigInner {
+struct RawConfig {
     /// Address to which the proxy should bind such as `127.0.0.1:8000`.
     #[serde(default = "default_address")]
-    pub(crate) address: SocketAddr,
+    address: SocketAddr,
 
     /// Endpoint calls to which should be proxied such as `http://127.0.0.1:4321`.
-    pub(crate) endpoint: String,
+    endpoint: String,
+
+    /// Key to be used for generating tokens and nonces.
+    /// Any string.
+    key: String,
+
+    /// Properties of a nonce.
+    nonce: NonceProperties,
 }
 
 fn default_address() -> SocketAddr {
     ([127, 0, 0, 1], 8000).into()
 }
 
+#[serde_as]
+#[derive(Deserialize)]
+pub struct NonceProperties {
+    pub prefix_length: NonZeroU8,
+    pub suffix_length: NonZeroU8,
+    pub hash_suffix_length: NonZeroU8,
+    #[serde_as(as = "serde_with::DurationSeconds<i64>")]
+    pub nonce_ttl: Duration,
+    #[serde_as(as = "serde_with::DurationSeconds<i64>")]
+    pub token_ttl: Duration,
+}
+
+pub struct RuntimeConfig {
+    pub address: SocketAddr,
+    pub endpoint: String,
+    pub verifier: Verifier,
+}
+
 #[derive(Clone)]
-pub(crate) struct Config(Arc<ConfigInner>);
+pub struct Config(Arc<RuntimeConfig>);
 
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
-        let config: ConfigInner = Configuration::builder()
+        let config: RawConfig = Configuration::builder()
             .add_source(configuration::File::with_name("config"))
             .add_source(configuration::Environment::with_prefix("COMPROXITY"))
             .build()
             .and_then(Configuration::try_deserialize)?;
-        Ok(Self(Arc::new(config)))
+        Ok(Self(Arc::new(RuntimeConfig {
+            address: config.address,
+            endpoint: config.endpoint,
+            verifier: Verifier::new(config.key, config.nonce),
+        })))
     }
 }
 
 impl Deref for Config {
-    type Target = ConfigInner;
+    type Target = RuntimeConfig;
 
     fn deref(&self) -> &Self::Target {
         &self.0

@@ -13,3 +13,7 @@ indent_size = 2
 
 [LICENSE-*]
 generated_code = true
+
+[Cargo.lock]
+generated_code = true
+indent_size = 1
