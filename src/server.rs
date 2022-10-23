@@ -34,15 +34,13 @@ async fn handle_unique_request(
                 Ok(()) => proxy_request(config, client_address, request).await,
                 Err(_token_error) => create_nonce(config, client_address).await,
             }
+        } else if let (Some(nonce), Some(answer)) = (
+            cookie.get(cookie_names::NONCE),
+            cookie.get(cookie_names::ANSWER),
+        ) {
+            verify_answer(config, client_address, nonce, answer).await
         } else {
-            if let (Some(nonce), Some(answer)) = (
-                cookie.get(cookie_names::NONCE),
-                cookie.get(cookie_names::ANSWER),
-            ) {
-                verify_answer(config, client_address, nonce, answer).await
-            } else {
-                create_nonce(config, client_address).await
-            }
+            create_nonce(config, client_address).await
         }
     } else {
         create_nonce(config, client_address).await
@@ -79,9 +77,7 @@ async fn proxy_request(
             error!("Failed to handle proxy request: {error:?}");
             Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(format!(
-                    "Request failed due to an internal error"
-                )))?)
+                .body(Body::from("Request failed due to an internal error"))?)
         }
     }
 }
@@ -134,7 +130,7 @@ async fn verify_answer(
             ) => create_nonce(config, client_address).await?,
             Err(AnswerError::WrongAnswer) => Response::builder()
                 .status(StatusCode::PRECONDITION_FAILED)
-                .body(Body::from(format!("Wrong answer, try again")))?,
+                .body(Body::from("Wrong answer, try again"))?,
         },
     )
 }
@@ -149,7 +145,7 @@ pub enum Error {
 }
 
 mod cookie_names {
-    pub const TOKEN: &'static str = "COMPROXITY_TOKEN";
-    pub const ANSWER: &'static str = "COMPROXITY_ANSWER";
-    pub const NONCE: &'static str = "COMPROXITY_NONCE";
+    pub const TOKEN: &str = "COMPROXITY_TOKEN";
+    pub const ANSWER: &str = "COMPROXITY_ANSWER";
+    pub const NONCE: &str = "COMPROXITY_NONCE";
 }

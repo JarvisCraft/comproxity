@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::net::SocketAddr;
 
+use crate::config::NonceProperties;
 use compact_str::CompactString;
 use hmac::Hmac;
 use jwt::SignWithKey;
@@ -9,9 +10,6 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use smallvec::SmallVec;
 use time::{Duration, OffsetDateTime};
-use tracing::debug;
-
-use crate::config::NonceProperties;
 
 /// Unique object identifying the user.
 pub type ClientIdentity = SocketAddr;
@@ -97,7 +95,7 @@ impl Verifier {
         }
 
         Ok(AccessToken {
-            subject: identity.clone(),
+            subject: *identity,
             issued_at: OffsetDateTime::now_utc(),
         }
         .sign_with_key(&self.key)?
@@ -171,9 +169,9 @@ fn compact_hex_string_to_bytes<const MAX_LENGTH: usize>(
     let mut string_bytes = hex_string.bytes();
     while let Some(left_byte) = string_bytes.next() {
         fn to_byte_half(byte: u8) -> Result<u8, ()> {
-            match byte as char {
-                byte @ '0'..='9' => Ok(byte as u8 - '0' as u8),
-                byte @ 'A'..='F' => Ok(byte as u8 - 'A' as u8),
+            match byte {
+                byte @ b'0'..=b'9' => Ok(byte - b'0'),
+                byte @ b'A'..=b'F' => Ok(byte - b'A'),
                 _ => Err(()),
             }
         }
