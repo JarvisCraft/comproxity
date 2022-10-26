@@ -8,7 +8,7 @@ use jwt::SignWithKey;
 use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use time::{Duration, OffsetDateTime};
 
 /// Unique object identifying the user.
@@ -42,9 +42,10 @@ impl Verifier {
             ..Default::default()
         };
 
-        let prefix = random_compact_string(self.nonce_properties.prefix_length.get());
-        let suffix = random_compact_string(self.nonce_properties.suffix_length.get());
-        let hash_suffix = random_compact_hex_string(self.nonce_properties.hash_suffix_length.get());
+        let prefix = random_compact_string(self.nonce_properties.prefix_length.get().into());
+        let suffix = random_compact_string(self.nonce_properties.suffix_length.get().into());
+        let hash_suffix =
+            random_compact_hex_string(self.nonce_properties.hash_suffix_length.get().into());
 
         Ok(Token::new(
             header,
@@ -123,7 +124,7 @@ impl Verifier {
     }
 }
 
-fn random_compact_string(length: impl Into<usize>) -> CompactString {
+fn random_compact_string(length: usize) -> CompactString {
     rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(length.into())
@@ -132,58 +133,36 @@ fn random_compact_string(length: impl Into<usize>) -> CompactString {
 }
 
 // TODO(CertainLach): provide a more efficient implementation
-fn random_compact_hex_string(length: impl Into<usize>) -> CompactString {
+fn random_compact_hex_string(length: usize) -> CompactString {
+    debug_assert!(
+        length.checked_mul(2).is_some(),
+        "length should not be of absurd size"
+    );
+
     let length = length.into();
 
-    let mut buffer: SmallVec<[u8; 8]> = smallvec::smallvec![0; length];
+    let mut buffer: SmallVec<[u8; 8]> = smallvec![0; length];
     rand::thread_rng().fill_bytes(&mut buffer);
 
-    let mut string = CompactString::with_capacity(length);
-    for byte in buffer {
-        const HEX_DICTIONARY: [char; 16] = [
-            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
-        ];
+    let mut string_buffer: SmallVec<[u8; 16]> = smallvec![0; length * 2];
+    hex::encode_to_slice(&buffer, &mut string_buffer)
+        .expect("buffer is exactly of the required size");
 
-        string.push(HEX_DICTIONARY[(byte >> 4 & 0xF) as usize]);
-        string.push(HEX_DICTIONARY[(byte & 0xF) as usize]);
-    }
-
-    string
+    CompactString::from_utf8(string_buffer).expect("string is guaranteed to consist of hex digits")
 }
 
 fn compact_hex_string_to_bytes<const MAX_LENGTH: usize>(
     hex_string: &CompactString,
 ) -> Result<SmallVec<[u8; 8]>, ()> {
-    let length = hex_string.len();
-    if length % 2 == 1 {
-        return Err(());
-    }
-
-    let length = length / 2;
+    let length = hex_string.len() / 2;
     if length > MAX_LENGTH {
         return Err(());
     }
 
-    let mut buffer = SmallVec::with_capacity(length / 2);
-
-    let mut string_bytes = hex_string.bytes();
-    while let Some(left_byte) = string_bytes.next() {
-        fn to_byte_half(byte: u8) -> Result<u8, ()> {
-            match byte {
-                byte @ b'0'..=b'9' => Ok(byte - b'0'),
-                byte @ b'A'..=b'F' => Ok(byte - b'A'),
-                _ => Err(()),
-            }
-        }
-
-        let right_byte = string_bytes
-            .next()
-            .expect("string is known to be of even length by now");
-
-        buffer.push(to_byte_half(left_byte)? << 4 | to_byte_half(right_byte)?)
-    }
-
-    Ok(buffer)
+    let mut buffer = smallvec![0; length / 2];
+    hex::decode_to_slice(hex_string.as_bytes(), &mut buffer)
+        .map(|()| buffer)
+        .map_err(|_| ())
 }
 
 fn has_expired(time: OffsetDateTime, ttl: Duration) -> bool {
