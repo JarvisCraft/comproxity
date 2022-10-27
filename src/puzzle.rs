@@ -127,7 +127,7 @@ impl Verifier {
 fn random_compact_string(length: usize) -> CompactString {
     rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
-        .take(length.into())
+        .take(length)
         .map(char::from)
         .collect()
 }
@@ -138,8 +138,6 @@ fn random_compact_hex_string(length: usize) -> CompactString {
         length.checked_mul(2).is_some(),
         "length should not be of absurd size"
     );
-
-    let length = length.into();
 
     let mut buffer: SmallVec<[u8; 8]> = smallvec![0; length];
     rand::thread_rng().fill_bytes(&mut buffer);

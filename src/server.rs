@@ -121,13 +121,13 @@ async fn draw_nonce_page(
     let mut response = hyper_static::serve::static_file(
         &config.nonce_page,
         Some("text/html"),
-        &request.headers(),
+        request.headers(),
         65536,
     )
     .await
     .map_err(|file_error| {
         error!("Failed to load static file {file_error}");
-        Error::InternalError
+        Error::Internal
     })??;
 
     let headers = response.headers_mut();
@@ -243,13 +243,13 @@ async fn verify_answer(
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("failed to handle HTTP request: {0}")]
-    HyperHttpError(#[from] hyper::http::Error),
+    Http(#[from] hyper::http::Error),
 
     #[error("failed to generate nonce: {0}")]
-    NonceCreationError(#[from] NewNonceError),
+    NonceCreation(#[from] NewNonceError),
 
     #[error("something went wrong")]
-    InternalError,
+    Internal,
 }
 
 mod cookie_names {
