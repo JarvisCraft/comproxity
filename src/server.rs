@@ -53,11 +53,11 @@ async fn handle_unique_request(
                     debug!("User has provided nonce and answer, verifying it");
                     verify_answer(config, client_address, request, nonce, answer).await
                 }
-                (Some(_nonce), _answer @ None) => {
+                (Some(_nonce), _no_answer) => {
                     debug!("User has provided nonce without a token, requesting retry");
                     draw_nonce_page(config, request, None).await
                 }
-                (_nonce @ None, Some(_answer)) => {
+                (_no_nonce, Some(_answer)) => {
                     debug!("User has provided answer without a nonce, giving him a new nonce");
                     create_nonce(config, client_address, request).await
                 }
