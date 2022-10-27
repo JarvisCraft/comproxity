@@ -25,7 +25,7 @@ async fn main() -> ExitCode {
     let server = hyper::Server::bind(&config.address)
         .serve(hyper::service::make_service_fn(
             move |connection: &AddrStream| {
-                let client_address = connection.remote_addr();
+                let client_address = connection.remote_addr().ip();
                 let config = config.clone();
                 async move {
                     Ok::<_, ProxyError>(hyper::service::service_fn(move |request| {

@@ -1,7 +1,7 @@
 use configuration::{Config as Configuration, ConfigError};
 use serde::Deserialize;
 use serde_with::serde_as;
-use std::{net::SocketAddr, num::NonZeroU8, ops::Deref, sync::Arc};
+use std::{net::SocketAddr, num::NonZeroU8, ops::Deref, path::PathBuf, sync::Arc};
 use time::Duration;
 
 use crate::puzzle::Verifier;
@@ -22,10 +22,18 @@ struct RawConfig {
 
     /// Properties of a nonce.
     nonce: NonceProperties,
+
+    /// Path to HTML file used to render nonce page.
+    #[serde(default = "default_nonce_page")]
+    nonce_page: PathBuf,
 }
 
 fn default_address() -> SocketAddr {
     ([127, 0, 0, 1], 8000).into()
+}
+
+fn default_nonce_page() -> PathBuf {
+    "./assets/nonce.html".into()
 }
 
 #[serde_as]
@@ -44,6 +52,7 @@ pub struct RuntimeConfig {
     pub address: SocketAddr,
     pub endpoint: String,
     pub verifier: Verifier,
+    pub nonce_page: PathBuf,
 }
 
 #[derive(Clone)]
@@ -60,6 +69,7 @@ impl Config {
             address: config.address,
             endpoint: config.endpoint,
             verifier: Verifier::new(config.key, config.nonce),
+            nonce_page: config.nonce_page,
         })))
     }
 }

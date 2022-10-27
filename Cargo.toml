@@ -19,6 +19,7 @@ tokio = { version = "1.21.2", features = ["full"] }
 hyper = { version = "0.14.20", features = ["full"] }
 headers = { version = "0.3.8" }
 hyper-reverse-proxy = "0.5.1"
+hyper-static = "0.1.5"
 # Security
 sha2 = "0.10.6"
 jwt = "0.16.0"

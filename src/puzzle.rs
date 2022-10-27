@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 
 use crate::config::NonceProperties;
 use compact_str::CompactString;
@@ -12,7 +12,7 @@ use smallvec::{smallvec, SmallVec};
 use time::{Duration, OffsetDateTime};
 
 /// Unique object identifying the user.
-pub type ClientIdentity = SocketAddr;
+pub type ClientIdentity = IpAddr;
 
 pub type HmacSha256 = Hmac<Sha256>;
 
@@ -73,14 +73,14 @@ impl Verifier {
 
         let nonce: Nonce = nonce.as_ref().verify_with_key(&self.key)?;
         if &nonce.subject != identity {
-            return Err(AnswerError::InvalidSubject);
+            return Err(AnswerError::InvalidSubject(*identity, nonce.subject));
         }
         if has_expired(nonce.issued_at, self.nonce_properties.nonce_ttl) {
             return Err(AnswerError::Expired);
         }
 
         let expected_hash = compact_hex_string_to_bytes::<32>(&nonce.hash_suffix)
-            .map_err(|_| AnswerError::InvalidExpectedHashSuffix)?;
+            .map_err(|()| AnswerError::InvalidExpectedHashSuffix)?;
 
         let mut hasher = Sha256::new();
         hasher.update(answer.as_ref());
@@ -113,7 +113,7 @@ impl Verifier {
         let token: AccessToken = token.as_ref().verify_with_key(&self.key)?;
 
         if &token.subject != identity {
-            return Err(VerifyTokenError::WrongSubject);
+            return Err(VerifyTokenError::InvalidSubject(*identity, token.subject));
         }
 
         if has_expired(token.issued_at, self.nonce_properties.token_ttl) {
@@ -154,12 +154,12 @@ fn random_compact_hex_string(length: usize) -> CompactString {
 fn compact_hex_string_to_bytes<const MAX_LENGTH: usize>(
     hex_string: &CompactString,
 ) -> Result<SmallVec<[u8; 8]>, ()> {
-    let length = hex_string.len() / 2;
-    if length > MAX_LENGTH {
+    let bytes_length = hex_string.len() / 2;
+    if bytes_length > MAX_LENGTH {
         return Err(());
     }
 
-    let mut buffer = smallvec![0; length / 2];
+    let mut buffer = smallvec![0; bytes_length];
     hex::decode_to_slice(hex_string.as_bytes(), &mut buffer)
         .map(|()| buffer)
         .map_err(|_| ())
@@ -183,15 +183,15 @@ pub enum AnswerError {
     InvalidJwt(#[from] jwt::error::Error),
 
     /// Nonce subject does not match.
-    #[error("invalid nonce subject")]
-    InvalidSubject,
+    #[error("invalid nonce subject: expected {0} but got {1}")]
+    InvalidSubject(ClientIdentity, ClientIdentity),
 
     /// Token subject is invalid.
     #[error("nonce has expired")]
     Expired,
 
     /// Invalid expected hash suffix.
-    #[error("invalid expected hash hash")]
+    #[error("invalid expected hash suffix ()")]
     InvalidExpectedHashSuffix,
 
     /// The answer is wrong.
@@ -210,8 +210,8 @@ pub enum VerifyTokenError {
     Expired,
 
     /// Wrong subject.
-    #[error("token subject does not match")]
-    WrongSubject,
+    #[error("invalid token subject: expected {0} but got {1}")]
+    InvalidSubject(ClientIdentity, ClientIdentity),
 }
 
 /// A computationally complex task to be solved by the verified entity.
