@@ -25,12 +25,12 @@
             const utf8 = new TextEncoder().encode(value);
             return await crypto.subtle.digest('SHA-256', utf8)
                 .then(buffer => Array.from(new Uint8Array(buffer))
-                    .map(bytes => bytes.toString(16))
+                    .map(bytes => bytes.toString(16).padStart(2, '0'))
                     .join('')
                 );
         }
 
-        function get_cookie(name) {
+        function getCookie(name) {
             const cookies = decodeURIComponent(document.cookie).split(';');
             for (const cookie of cookies) {
                 const offset = cookie.charAt(0) === ' ' ? 1 : 0;
@@ -40,11 +40,11 @@
             return null;
         }
 
-        function set_cookie(name, value) {
+        function setCookie(name, value) {
             document.cookie = `${name}=${value}; path=/; SameSite=Lax`
         }
 
-        async function find_answer(prefix, suffix, hash_suffix, step, begin) {
+        async function findAnswer(prefix, suffix, hash_suffix, step, begin) {
             while (true) {
                 const string = prefix + begin.toString(36) + suffix;
                 const hash = await sha256(string);
@@ -54,7 +54,7 @@
             }
         }
 
-        const raw_nonce = get_cookie('COMPROXITY_NONCE');
+        const raw_nonce = getCookie('COMPROXITY_NONCE');
         if (raw_nonce == null) {
             console.error('No raw_nonce is specified');
             return;
@@ -62,27 +62,24 @@
 
         class JWT {
             constructor(jwt) {
-                const delimiter1Index = jwt.indexOf('.');
-                const delimiter2Index = jwt.indexOf('.', delimiter1Index + 1);
-
-                this.header = JSON.parse(atob(jwt.substring(0, delimiter1Index)));
-                this.payload = JSON.parse(atob(jwt.substring(delimiter1Index + 1, delimiter2Index)));
+                [this.header, this.payload] = jwt.split('.').slice(0, 2).map(atob).map(JSON.parse)
             }
         }
 
-        const nonce = await new JWT(raw_nonce);
+        const nonce = new JWT(raw_nonce);
         const payload = nonce.payload;
 
         const concurrency = 16;
         const tasks = [];
         for (let i = 0; i < concurrency; i++) tasks
-            .push(find_answer(payload.prefix, payload.suffix, payload.hash_suffix, concurrency, i));
+            .push(findAnswer(payload.prefix, payload.suffix, payload.hash_suffix, concurrency, i));
 
         Promise.race(tasks).then(answer => {
-            set_cookie('COMPROXITY_ANSWER', answer);
+            setCookie('COMPROXITY_ANSWER', answer);
             location.reload();
-        })
-    })()
+        });
+    })();
 </script>
+<footer>Power by <a href="https://progrm-jarvis.ru/comproxity">Comproxity</a></footer>
 </body>
 </html>
