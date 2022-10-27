@@ -45,11 +45,8 @@
         }
 
         async function find_answer(prefix, suffix, hash_suffix, step, begin) {
-            const base64 = {};
-            base64.chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
-
             while (true) {
-                const string = prefix + begin.toString(32) + suffix;
+                const string = prefix + begin.toString(36) + suffix;
                 const hash = await sha256(string);
                 if (hash.endsWith(hash_suffix)) return string;
 

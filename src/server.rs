@@ -5,7 +5,7 @@ use crate::{
 };
 use hyper::header::HeaderName;
 use hyper::http::HeaderValue;
-use hyper::{header::SET_COOKIE, Body, Request, Response, StatusCode};
+use hyper::{header::SET_COOKIE, Body, HeaderMap, Request, Response, StatusCode};
 use std::net::IpAddr;
 use tracing::{debug, error, info, trace};
 use ulid::Ulid;
@@ -37,7 +37,7 @@ async fn handle_unique_request(
             match config.verifier.verify_token(&client_address, token) {
                 Ok(()) => {
                     debug!("Token is valid, handling normal proxy request");
-                    proxy_request(config, client_address, request).await
+                    proxy_request(config, client_address, request, None).await
                 }
                 Err(token_error) => {
                     debug!("Token is invalid {token_error}, creating a new nonce");
@@ -91,16 +91,21 @@ macro_rules! format_cookie {
     }};
 }
 
-#[tracing::instrument(skip(config, request))]
+#[tracing::instrument(skip_all)]
 async fn proxy_request(
     config: Config,
     client_address: IpAddr,
     request: Request<Body>,
+    extra_headers: impl IntoIterator<Item = (HeaderName, HeaderValue)>,
 ) -> Result<Response<Body>, Error> {
     trace!("Proxying request");
 
     match hyper_reverse_proxy::call(client_address, &config.endpoint, request).await {
-        Ok(response) => Ok(response),
+        Ok(mut response) => {
+            add_extra_headers(response.headers_mut(), extra_headers);
+
+            Ok(response)
+        }
         Err(error) => {
             error!("Failed to handle proxy request: {error:?}");
             Ok(Response::builder()
@@ -110,7 +115,7 @@ async fn proxy_request(
     }
 }
 
-#[tracing::instrument(skip(config, request, extra_headers))]
+#[tracing::instrument(skip_all)]
 async fn draw_nonce_page(
     config: Config,
     request: Request<Body>,
@@ -130,11 +135,7 @@ async fn draw_nonce_page(
         Error::Internal
     })??;
 
-    let headers = response.headers_mut();
-    for (name, value) in extra_headers {
-        debug!("Overriding header {name} with value {value:?}");
-        let _: bool = headers.append(name, value);
-    }
+    add_extra_headers(response.headers_mut(), extra_headers);
 
     Ok(response)
 }
@@ -180,7 +181,7 @@ async fn create_nonce(
     .await
 }
 
-#[tracing::instrument(skip(config, request))]
+#[tracing::instrument(skip(config, client_address, request))]
 async fn verify_answer(
     config: Config,
     client_address: IpAddr,
@@ -190,54 +191,75 @@ async fn verify_answer(
 ) -> Result<Response<Body>, Error> {
     trace!("Verifying user answer");
 
-    Ok(
-        match config.verifier.answer(&client_address, &nonce, &answer) {
-            Ok(access_token) => {
-                debug!("Correct answer, granting access token");
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header(
-                        SET_COOKIE,
-                        format_cookie!(cookie_names::TOKEN => access_token; SameSite = Lax),
-                    )
-                    .header(
-                        SET_COOKIE,
-                        format_cookie!(cookie_names::NONCE; SameSite = Lax; Remove),
-                    )
-                    .header(
-                        SET_COOKIE,
-                        format_cookie!(cookie_names::ANSWER; SameSite = Lax; Remove),
-                    )
-                    .body(Body::from(
-                        "Successfully validated cookie, now try reconnecting",
-                    ))?
-            }
-            Err(
-                error @ AnswerError::InvalidJwt(..)
-                | error @ AnswerError::Expired
-                | error @ AnswerError::InvalidSubject(..)
-                | error @ AnswerError::InvalidExpectedHashSuffix,
-            ) => {
-                debug!("User can no longer solve the nonce due an error {error}, giving new nonce");
-                create_nonce(config, client_address, request).await?
-            }
-            Err(AnswerError::WrongAnswer) => {
-                debug!("User has answered wrongly, forcing him to retry");
-                draw_nonce_page(
-                    config,
-                    request,
-                    Some((
+    match config.verifier.answer(&client_address, &nonce, &answer) {
+        Ok(access_token) => {
+            debug!("Correct answer, granting access token");
+            proxy_request(
+                config,
+                client_address,
+                request,
+                [
+                    (
                         SET_COOKIE,
                         HeaderValue::from_str(
-                            &format_cookie!(cookie_names::ANSWER; SameSite=Lax; Remove),
+                            &format_cookie!(cookie_names::TOKEN => access_token; SameSite = Lax),
                         )
                         .unwrap(),
-                    )),
-                )
-                .await?
-            }
-        },
-    )
+                    ),
+                    (
+                        SET_COOKIE,
+                        HeaderValue::from_str(
+                            &format_cookie!(cookie_names::NONCE; SameSite = Lax; Remove),
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        SET_COOKIE,
+                        HeaderValue::from_str(
+                            &format_cookie!(cookie_names::ANSWER; SameSite = Lax; Remove),
+                        )
+                        .unwrap(),
+                    ),
+                ],
+            )
+            .await
+        }
+        Err(
+            error @ AnswerError::InvalidJwt(..)
+            | error @ AnswerError::Expired
+            | error @ AnswerError::InvalidSubject(..)
+            | error @ AnswerError::InvalidExpectedHashSuffix,
+        ) => {
+            debug!("User can no longer solve the nonce due an error {error}, giving new nonce");
+            create_nonce(config, client_address, request).await
+        }
+        Err(AnswerError::WrongAnswer) => {
+            debug!("User has answered wrongly, forcing him to retry");
+            draw_nonce_page(
+                config,
+                request,
+                Some((
+                    SET_COOKIE,
+                    HeaderValue::from_str(
+                        &format_cookie!(cookie_names::ANSWER; SameSite=Lax; Remove),
+                    )
+                    .unwrap(),
+                )),
+            )
+            .await
+        }
+    }
+}
+
+#[tracing::instrument(skip_all)]
+fn add_extra_headers(
+    headers: &mut HeaderMap<HeaderValue>,
+    extra_headers: impl IntoIterator<Item = (HeaderName, HeaderValue)>,
+) {
+    for (name, value) in extra_headers {
+        debug!("Adding extra header {name} with value {value:?}");
+        let _: bool = headers.append(name, value);
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
