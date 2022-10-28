@@ -212,7 +212,7 @@ async fn verify_answer(
         Ok(access_token) => {
             debug!("Correct answer, granting access token");
             proxy_request(
-                &config,
+                config,
                 client_address,
                 request,
                 [
