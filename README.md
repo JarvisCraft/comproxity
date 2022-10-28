@@ -2,6 +2,18 @@
 
 Simple Proof of Work (PoW) HTTP proxy
 
+```text
+         __
+ _(\    |@@|
+(__/\__ \--/ __
+   \___|----|  |   __
+       \ }{ /\ )_ / _\
+       /\__/\ \__O (__
+      (--/\--)    \__/
+      _)(  )(_
+     `---''---`
+```
+
 # Algorithm
 
 Request attempt:
@@ -32,3 +44,7 @@ sequenceDiagram
         Verifier ->>- Client: Retry verification
     end
 ```
+
+# Credits
+
+ASCII arts for this README and default HTML pages are taken from [ASCII Art Archive](https://www.asciiart.eu/electronics/robots).

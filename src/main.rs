@@ -1,4 +1,5 @@
 use hyper::server::conn::AddrStream;
+use std::convert::Infallible;
 use std::process::ExitCode;
 use tracing::{error, info};
 
@@ -7,7 +8,6 @@ mod puzzle;
 mod server;
 
 use config::Config;
-use server::Error as ProxyError;
 
 #[tokio::main]
 #[tracing::instrument(name = "bootstrap")]
@@ -28,7 +28,7 @@ async fn main() -> ExitCode {
                 let client_address = connection.remote_addr().ip();
                 let config = config.clone();
                 async move {
-                    Ok::<_, ProxyError>(hyper::service::service_fn(move |request| {
+                    Ok::<_, Infallible>(hyper::service::service_fn(move |request| {
                         let config = config.clone();
                         server::handle_request(config, client_address, request)
                     }))

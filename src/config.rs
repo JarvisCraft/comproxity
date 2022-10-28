@@ -10,7 +10,7 @@ use crate::puzzle::Verifier;
 #[derive(Deserialize)]
 struct RawConfig {
     /// Address to which the proxy should bind such as `127.0.0.1:8000`.
-    #[serde(default = "default_address")]
+    #[serde(default = "defaults::address")]
     address: SocketAddr,
 
     /// Endpoint calls to which should be proxied such as `http://127.0.0.1:4321`.
@@ -23,17 +23,9 @@ struct RawConfig {
     /// Properties of a nonce.
     nonce: NonceProperties,
 
-    /// Path to HTML file used to render nonce page.
-    #[serde(default = "default_nonce_page")]
-    nonce_page: PathBuf,
-}
-
-fn default_address() -> SocketAddr {
-    ([127, 0, 0, 1], 8000).into()
-}
-
-fn default_nonce_page() -> PathBuf {
-    "./assets/nonce.html".into()
+    /// Path to HTML files drawn by comproxity.
+    #[serde(default = "defaults::pages")]
+    pages: Pages,
 }
 
 #[serde_as]
@@ -48,11 +40,20 @@ pub struct NonceProperties {
     pub token_ttl: Duration,
 }
 
+#[derive(Deserialize)]
+pub struct Pages {
+    #[serde(default = "defaults::pages::nonce")]
+    pub nonce: PathBuf,
+
+    #[serde(default = "defaults::pages::internal_error")]
+    pub internal_error: PathBuf,
+}
+
 pub struct RuntimeConfig {
     pub address: SocketAddr,
     pub endpoint: String,
     pub verifier: Verifier,
-    pub nonce_page: PathBuf,
+    pub pages: Pages,
 }
 
 #[derive(Clone)]
@@ -69,7 +70,7 @@ impl Config {
             address: config.address,
             endpoint: config.endpoint,
             verifier: Verifier::new(config.key, config.nonce),
-            nonce_page: config.nonce_page,
+            pages: config.pages,
         })))
     }
 }
@@ -79,5 +80,33 @@ impl Deref for Config {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+mod defaults {
+    use super::Pages;
+    use std::net::SocketAddr;
+
+    pub fn address() -> SocketAddr {
+        ([127, 0, 0, 1], 8000).into()
+    }
+
+    pub fn pages() -> Pages {
+        Pages {
+            nonce: pages::nonce(),
+            internal_error: pages::internal_error(),
+        }
+    }
+
+    pub mod pages {
+        use std::path::PathBuf;
+
+        pub fn nonce() -> PathBuf {
+            "./assets/nonce.html".into()
+        }
+
+        pub fn internal_error() -> PathBuf {
+            "./assets/internal-error.html".into()
+        }
     }
 }

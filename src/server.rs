@@ -5,7 +5,9 @@ use crate::{
 };
 use hyper::header::HeaderName;
 use hyper::http::HeaderValue;
-use hyper::{header::SET_COOKIE, Body, HeaderMap, Request, Response, StatusCode};
+use hyper::{header::SET_COOKIE, Body, HeaderMap, Request, Response};
+use hyper_reverse_proxy::ProxyError;
+use std::convert::Infallible;
 use std::net::IpAddr;
 use tracing::{debug, error, info, trace};
 use ulid::Ulid;
@@ -14,8 +16,13 @@ pub async fn handle_request(
     config: Config,
     client_address: IpAddr,
     request: Request<Body>,
-) -> Result<Response<Body>, Error> {
-    handle_unique_request(config, client_address, request, Ulid::new()).await
+) -> Result<Response<Body>, Infallible> {
+    Ok(
+        handle_unique_request(config, client_address, request, Ulid::new())
+            .await
+            // TODO: find a way to response with error
+            .unwrap_or_else(|_error| Response::new(Body::empty())),
+    )
 }
 
 #[tracing::instrument(name = "request", skip(config, request), fields(id = %id))]
@@ -24,12 +31,15 @@ async fn handle_unique_request(
     client_address: IpAddr,
     request: Request<Body>,
     id: Ulid,
-) -> Result<Response<Body>, Error> {
+) -> Result<Response<Body>, hyper::http::Error> {
     use headers::{Cookie, HeaderMapExt};
 
     info!("Handling {request:?}");
 
-    let cookie = request.headers().typed_get::<Cookie>();
+    // clone is required since they may be re-used when handling errors
+    // while the original request is passed to other methods
+    let headers = request.headers().clone();
+    let cookie = headers.typed_get::<Cookie>();
 
     let response = if let Some(cookie) = cookie {
         debug!("User has provided token");
@@ -37,11 +47,11 @@ async fn handle_unique_request(
             match config.verifier.verify_token(&client_address, token) {
                 Ok(()) => {
                     debug!("Token is valid, handling normal proxy request");
-                    proxy_request(config, client_address, request, None).await
+                    proxy_request(&config, client_address, request, None).await
                 }
                 Err(token_error) => {
                     debug!("Token is invalid {token_error}, creating a new nonce");
-                    create_nonce(config, client_address, request).await
+                    create_nonce(&config, client_address, request).await
                 }
             }
         } else {
@@ -51,32 +61,52 @@ async fn handle_unique_request(
             ) {
                 (Some(nonce), Some(answer)) => {
                     debug!("User has provided nonce and answer, verifying it");
-                    verify_answer(config, client_address, request, nonce, answer).await
+                    verify_answer(&config, client_address, request, nonce, answer).await
                 }
                 (Some(_nonce), _no_answer) => {
                     debug!("User has provided nonce without a token, requesting retry");
-                    draw_nonce_page(config, request, None).await
+                    draw_nonce_page(&config, request, None).await
                 }
                 (_no_nonce, Some(_answer)) => {
                     debug!("User has provided answer without a nonce, giving him a new nonce");
-                    create_nonce(config, client_address, request).await
+                    create_nonce(&config, client_address, request).await
                 }
                 (None, None) => {
                     debug!("User has not provided anything, giving him a new nonce");
-                    create_nonce(config, client_address, request).await
+                    create_nonce(&config, client_address, request).await
                 }
             }
         }
     } else {
         // since the user has not provided any cookies, so we will provide some for him
-        create_nonce(config, client_address, request).await
+        create_nonce(&config, client_address, request).await
     };
-    match &response {
-        Ok(response) => debug!("Responding with {response:?}"),
-        Err(error) => error!("Failed to response: {error}"),
-    }
 
-    response
+    match response {
+        Ok(response) => {
+            debug!("Responding with {response:?}");
+            Ok(response)
+        }
+        Err(error) => {
+            error!("Response failed: {error}");
+            match error {
+                Error::Http(error) => Err(error),
+                Error::ServeStaticFile(_) | Error::CreateNonce(_) | Error::Proxy(_) => {
+                    match hyper_static::serve::static_file(
+                        &config.pages.internal_error,
+                        Some("text/html"),
+                        &headers,
+                        65536,
+                    )
+                    .await
+                    {
+                        Ok(response) => response,
+                        Err(error) => error.into(),
+                    }
+                }
+            }
+        }
+    }
 }
 
 macro_rules! format_cookie {
@@ -93,47 +123,34 @@ macro_rules! format_cookie {
 
 #[tracing::instrument(skip_all)]
 async fn proxy_request(
-    config: Config,
+    config: &Config,
     client_address: IpAddr,
     request: Request<Body>,
     extra_headers: impl IntoIterator<Item = (HeaderName, HeaderValue)>,
 ) -> Result<Response<Body>, Error> {
     trace!("Proxying request");
 
-    match hyper_reverse_proxy::call(client_address, &config.endpoint, request).await {
-        Ok(mut response) => {
-            add_extra_headers(response.headers_mut(), extra_headers);
+    let mut response = hyper_reverse_proxy::call(client_address, &config.endpoint, request).await?;
+    add_extra_headers(response.headers_mut(), extra_headers);
 
-            Ok(response)
-        }
-        Err(error) => {
-            error!("Failed to handle proxy request: {error:?}");
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from("Request failed due to an internal error"))?)
-        }
-    }
+    Ok(response)
 }
 
 #[tracing::instrument(skip_all)]
 async fn draw_nonce_page(
-    config: Config,
+    config: &Config,
     request: Request<Body>,
     extra_headers: impl IntoIterator<Item = (HeaderName, HeaderValue)>,
 ) -> Result<Response<Body>, Error> {
     trace!("Drawing nonce page to the user");
 
     let mut response = hyper_static::serve::static_file(
-        &config.nonce_page,
+        &config.pages.nonce,
         Some("text/html"),
         request.headers(),
         65536,
     )
-    .await
-    .map_err(|file_error| {
-        error!("Failed to load static file {file_error}");
-        Error::Internal
-    })??;
+    .await??;
 
     add_extra_headers(response.headers_mut(), extra_headers);
 
@@ -142,7 +159,7 @@ async fn draw_nonce_page(
 
 #[tracing::instrument(skip(config, request))]
 async fn create_nonce(
-    config: Config,
+    config: &Config,
     client_address: IpAddr,
     request: Request<Body>,
 ) -> Result<Response<Body>, Error> {
@@ -183,7 +200,7 @@ async fn create_nonce(
 
 #[tracing::instrument(skip(config, client_address, request))]
 async fn verify_answer(
-    config: Config,
+    config: &Config,
     client_address: IpAddr,
     request: Request<Body>,
     nonce: &str,
@@ -195,7 +212,7 @@ async fn verify_answer(
         Ok(access_token) => {
             debug!("Correct answer, granting access token");
             proxy_request(
-                config,
+                &config,
                 client_address,
                 request,
                 [
@@ -226,8 +243,8 @@ async fn verify_answer(
         }
         Err(
             error @ AnswerError::InvalidJwt(..)
-            | error @ AnswerError::Expired
-            | error @ AnswerError::InvalidSubject(..)
+            | error @ AnswerError::Expired { .. }
+            | error @ AnswerError::SubjectMismatch { .. }
             | error @ AnswerError::InvalidExpectedHashSuffix,
         ) => {
             debug!("User can no longer solve the nonce due an error {error}, giving new nonce");
@@ -263,15 +280,30 @@ fn add_extra_headers(
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+enum Error {
     #[error("failed to handle HTTP request: {0}")]
     Http(#[from] hyper::http::Error),
 
-    #[error("failed to generate nonce: {0}")]
-    NonceCreation(#[from] NewNonceError),
+    #[error("failed to serve static file: {0}")]
+    ServeStaticFile(hyper_static::serve::ErrorKind),
 
-    #[error("something went wrong")]
-    Internal,
+    #[error("failed to generate nonce: {0}")]
+    CreateNonce(#[from] NewNonceError),
+
+    #[error("failed to handle proxy request: {0:?}")]
+    Proxy(ProxyError),
+}
+
+impl From<ProxyError> for Error {
+    fn from(error: ProxyError) -> Self {
+        Self::Proxy(error)
+    }
+}
+
+impl From<hyper_static::serve::Error> for Error {
+    fn from(error: hyper_static::serve::Error) -> Self {
+        Self::ServeStaticFile(error.kind())
+    }
 }
 
 mod cookie_names {

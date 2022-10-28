@@ -73,10 +73,13 @@ impl Verifier {
 
         let nonce: Nonce = nonce.as_ref().verify_with_key(&self.key)?;
         if &nonce.subject != identity {
-            return Err(AnswerError::InvalidSubject(*identity, nonce.subject));
+            return Err(AnswerError::SubjectMismatch {
+                expected: *identity,
+                actual: nonce.subject,
+            });
         }
-        if has_expired(nonce.issued_at, self.nonce_properties.nonce_ttl) {
-            return Err(AnswerError::Expired);
+        if let Err(expired_at) = check_expired(nonce.issued_at, self.nonce_properties.nonce_ttl) {
+            return Err(AnswerError::Expired { expired_at });
         }
 
         let expected_hash = compact_hex_string_to_bytes::<32>(&nonce.hash_suffix)
@@ -113,11 +116,14 @@ impl Verifier {
         let token: AccessToken = token.as_ref().verify_with_key(&self.key)?;
 
         if &token.subject != identity {
-            return Err(VerifyTokenError::InvalidSubject(*identity, token.subject));
+            return Err(VerifyTokenError::SubjectMismatch {
+                expected: *identity,
+                actual: token.subject,
+            });
         }
 
-        if has_expired(token.issued_at, self.nonce_properties.token_ttl) {
-            return Err(VerifyTokenError::Expired);
+        if let Err(expired_at) = check_expired(token.issued_at, self.nonce_properties.token_ttl) {
+            return Err(VerifyTokenError::Expired { expired_at });
         }
 
         Ok(())
@@ -163,8 +169,13 @@ fn compact_hex_string_to_bytes<const MAX_LENGTH: usize>(
         .map_err(|_| ())
 }
 
-fn has_expired(time: OffsetDateTime, ttl: Duration) -> bool {
-    time.saturating_add(ttl) < OffsetDateTime::now_utc()
+fn check_expired(time: OffsetDateTime, ttl: Duration) -> Result<(), OffsetDateTime> {
+    let expiration_time = time.saturating_add(ttl);
+    if expiration_time < OffsetDateTime::now_utc() {
+        Err(expiration_time)
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -180,16 +191,19 @@ pub enum AnswerError {
     #[error("JWT token is invalid: {0}")]
     InvalidJwt(#[from] jwt::error::Error),
 
-    /// Nonce subject does not match.
-    #[error("invalid nonce subject: expected {0} but got {1}")]
-    InvalidSubject(ClientIdentity, ClientIdentity),
-
     /// Token subject is invalid.
-    #[error("nonce has expired")]
-    Expired,
+    #[error("nonce has expired at {expired_at}")]
+    Expired { expired_at: OffsetDateTime },
+
+    /// Nonce subject does not match.
+    #[error("invalid nonce subject: expected {expected} but got {actual}")]
+    SubjectMismatch {
+        expected: ClientIdentity,
+        actual: ClientIdentity,
+    },
 
     /// Invalid expected hash suffix.
-    #[error("invalid expected hash suffix ()")]
+    #[error("invalid expected hash suffix")]
     InvalidExpectedHashSuffix,
 
     /// The answer is wrong.
@@ -204,12 +218,15 @@ pub enum VerifyTokenError {
     InvalidJwt(#[from] jwt::error::Error),
 
     /// Token has expired.
-    #[error("token has expired")]
-    Expired,
+    #[error("token has expired at {expired_at}")]
+    Expired { expired_at: OffsetDateTime },
 
     /// Wrong subject.
-    #[error("invalid token subject: expected {0} but got {1}")]
-    InvalidSubject(ClientIdentity, ClientIdentity),
+    #[error("invalid token subject: expected {expected} but got {actual}")]
+    SubjectMismatch {
+        expected: ClientIdentity,
+        actual: ClientIdentity,
+    },
 }
 
 /// A computationally complex task to be solved by the verified entity.
