@@ -44,18 +44,18 @@
             document.cookie = `${name}=${value}; path=/; SameSite=Lax`
         }
 
-        async function findAnswer(prefix, suffix, hash_suffix, step, begin) {
+        async function findAnswer(prefix, suffix, hashSuffix, step, begin) {
             while (true) {
                 const string = prefix + begin.toString(36) + suffix;
                 const hash = await sha256(string);
-                if (hash.endsWith(hash_suffix)) return string;
+                if (hash.endsWith(hashSuffix)) return string;
 
                 begin += step;
             }
         }
 
-        const raw_nonce = getCookie('COMPROXITY_NONCE');
-        if (raw_nonce == null) {
+        const rawNonce = getCookie('COMPROXITY_NONCE');
+        if (rawNonce == null) {
             console.error('No raw_nonce is specified');
             return;
         }
@@ -66,7 +66,7 @@
             }
         }
 
-        const nonce = new JWT(raw_nonce);
+        const nonce = new JWT(rawNonce);
         const payload = nonce.payload;
 
         const concurrency = 16;
@@ -82,4 +82,5 @@
 </script>
 <footer>Power by <a href="https://progrm-jarvis.ru/comproxity">Comproxity</a></footer>
 </body>
+
 </html>
