@@ -8,6 +8,7 @@ repository = "https://github.com/JarvisCraft/comproxity/"
 license = "MIT OR Apache-2.0"
 keywords = ["http", "proxy", "proof-of-work"]
 categories = ["network-programming", "web-programming::http-server"]
+include = ["src/**"]
 
 [dependencies]
 # Tracing
