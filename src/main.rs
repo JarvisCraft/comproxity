@@ -1,9 +1,11 @@
 use hyper::server::conn::AddrStream;
-use std::{convert::Infallible, process::ExitCode};
+use std::convert::Infallible;
+use std::process::ExitCode;
 use tracing::{error, info};
 
 mod config;
-mod proxy;
+mod puzzle;
+mod server;
 
 use config::Config;
 
@@ -14,8 +16,8 @@ async fn main() -> ExitCode {
 
     let config = match Config::load() {
         Ok(config) => config,
-        Err(e) => {
-            error!("failed to load config: {e}");
+        Err(error) => {
+            error!("failed to load config: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -23,12 +25,12 @@ async fn main() -> ExitCode {
     let server = hyper::Server::bind(&config.address)
         .serve(hyper::service::make_service_fn(
             move |connection: &AddrStream| {
-                let client_address = connection.remote_addr();
+                let client_address = connection.remote_addr().ip();
                 let config = config.clone();
                 async move {
                     Ok::<_, Infallible>(hyper::service::service_fn(move |request| {
                         let config = config.clone();
-                        proxy::handle_request(config, client_address, request)
+                        server::handle_request(config, client_address, request)
                     }))
                 }
             },
