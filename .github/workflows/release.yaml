@@ -40,7 +40,7 @@ jobs:
     needs: dry-run
     strategy:
       matrix:
-        target: [ x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, x86_64-apple-darwin ]
+        type: [ linux-x86_64, windows-x86_64, darwin-x86_64 ]
         include:
           - type: linux-x86_64
             target: x86_64-unknown-linux-gnu
@@ -83,17 +83,21 @@ jobs:
         with:
           command: build
           args: --release --target ${{ matrix.target }}
+      - name: Rename artifact
+        run: >
+          mv target/${{ matrix.target }}/release/${{ matrix.binary-name }}
+          target/${{ matrix.target }}/release/${{ matrix.artifact-name }}
       - name: Generate checksum
         run: >
-          shasum -a 256 target/${{ matrix.target }}/release/${{ matrix.binary-name }}
-          > target/${{ matrix.target }}/release/${{ matrix.binary-name }}.sha256
+          shasum -a 256 target/${{ matrix.target }}/release/${{ matrix.artifact-name }}
+          > target/${{ matrix.target }}/release/${{ matrix.artifact-name }}.sha256
       - name: Upload artifacts
         uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ matrix.type }}
           path: |
-            target/${{ matrix.target }}/release/${{ matrix.binary-name }}
-            target/${{ matrix.target }}/release/${{ matrix.binary-name }}.sha256
+            target/${{ matrix.target }}/release/${{ matrix.artifact-name }}
+            target/${{ matrix.target }}/release/${{ matrix.artifact-name }}.sha256
 
   dockerize:
     name: Dockerize
