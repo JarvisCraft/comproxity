@@ -1,0 +1,9 @@
+*
+
+!assets/
+!src/
+!Cargo.lock
+!Cargo.toml
+!LICENSE-APACHE
+!LICENSE-MIT
+!README.md

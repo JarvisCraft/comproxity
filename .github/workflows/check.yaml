@@ -22,14 +22,14 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-rustfmt--${{ hashFiles('**/Cargo.lock') }}
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rs/toolchain@v1.0.7
         with:
           toolchain: stable
           profile: minimal
           components: rustfmt
           override: true
       - name: Run tests
-        uses: actions-rs/cargo@v1.0.1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: fmt
           args: -- --check
@@ -50,7 +50,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-clippy
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rs/toolchain@v1.0.7
         with:
           toolchain: stable
           profile: minimal
