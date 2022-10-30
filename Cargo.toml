@@ -20,6 +20,7 @@ tokio = { version = "1.21.2", features = ["full"] }
 hyper = { version = "0.14.20", features = ["full"] }
 headers = { version = "0.3.8" }
 hyper-reverse-proxy = "0.5.1"
+hyper-static = { version = "0.1.6", no-default-features = true, features = ["hashing-sha2"]}
 # Security
 sha2 = "0.10.6"
 jwt = "0.16.0"
@@ -38,8 +39,3 @@ hex = "0.4.3"
 smallvec = { version = "1.10.0", features = ["union"] }
 # Error handling
 thiserror = "1.0.37"
-
-[dependencies.hyper-static]
-git = "https://github.com/JarvisCraft/hyper-static"
-branch = "no-openssl-dependency"
-version = "0.1.5"
