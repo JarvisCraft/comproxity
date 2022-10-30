@@ -1,5 +1,7 @@
 name: Test
-on: push
+on:
+  push:
+    branches: [ '**' ]
 
 env:
   CARGO_TERM_COLOR: always
