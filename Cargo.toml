@@ -8,7 +8,7 @@ repository = "https://github.com/JarvisCraft/comproxity/"
 license = "MIT OR Apache-2.0"
 keywords = ["http", "proxy", "proof-of-work"]
 categories = ["network-programming", "web-programming::http-server"]
-include = ["src/**"]
+include = ["assets/**", "src/**"]
 
 [dependencies]
 # Tracing
@@ -20,7 +20,7 @@ tokio = { version = "1.21.2", features = ["full"] }
 hyper = { version = "0.14.20", features = ["full"] }
 headers = { version = "0.3.8" }
 hyper-reverse-proxy = "0.5.1"
-hyper-static = "0.1.5"
+hyper-static = { git = "https://github.com/JarvisCraft/hyper-static", branch = "no-openssl-dependency" }
 # Security
 sha2 = "0.10.6"
 jwt = "0.16.0"
