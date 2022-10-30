@@ -22,13 +22,13 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rs/toolchain@v1.0.7
         with:
           toolchain: stable
           profile: minimal
           override: true
       - name: Run tests
-        uses: actions-rs/cargo@v1.0.1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: test
           args: --all-features --verbose
