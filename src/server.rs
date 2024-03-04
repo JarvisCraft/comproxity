@@ -208,7 +208,7 @@ async fn verify_answer(
 ) -> Result<Response<Body>, Error> {
     trace!("Verifying user answer");
 
-    match config.verifier.answer(&client_address, &nonce, &answer) {
+    match config.verifier.answer(&client_address, nonce, answer) {
         Ok(access_token) => {
             debug!("Correct answer, granting access token");
             proxy_request(
